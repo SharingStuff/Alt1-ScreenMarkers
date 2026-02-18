@@ -22,17 +22,34 @@ var isEditor = false;
 
 var isCapturingMouse = false;
 
+// --- VEX TOOL ---
+var vexAnchors = [];              // {x,y,timestamp}
+var vexPixelsPerTile = null;      // calibration result
+var vexScaleMult = 1.0;           // optional fine-tune
+var vexCaptureMode = null;        // null | "calib"
+var vexCalibP1 = null;
+var vexCalibP2 = null;
+
+
 // called when the app is loaded.
 function start()
 {
     cancel();
     startTick();
+    vexLoad();
+    vexUpdateStatus();
+
     // noinspection JSUnresolvedVariable
     alt1.events.alt1pressed.push(alt1key);
     // noinspection JSUnresolvedVariable, JSUnresolvedFunction
     a1lib.identifyUrl("appconfig.json");
 }
 
+// VEX calibration capture takes priority
+if (vexCaptureMode === "calib") {
+    vexHandleCalibrationPress();
+    return;
+}
 // Key listener for the Alt+1 key combination.
 function alt1key(e)
 {
@@ -388,6 +405,7 @@ function startTick()
     setTimeout(function ()
     {
         drawOverlays();
+        drawVexOverlays();
         update();
         startTick();
     }, tick);
@@ -924,4 +942,151 @@ function drawLine(color, x, y, x2, y2, lineWidth)
 function colorMix(r, g, b, a)
 {
     return a1lib.mixcolor(r, g, b, a);
+}
+
+// -------------------- VEX TOOL FUNCTIONS --------------------
+
+function vexGetTiles() {
+    var el = document.getElementById("vexTiles");
+    var val = parseInt(el && el.value ? el.value : "10", 10);
+    if (isNaN(val) || val < 1) val = 10;
+    return val;
+}
+
+function vexSetAnchorFromMouse() {
+    var mp = a1lib.mousePosition();
+    if (!mp) return;
+
+    vexAnchors = [{
+        x: mp.x,
+        y: mp.y,
+        timestamp: Date.now()
+    }];
+
+    vexSave();
+    vexUpdateStatus();
+}
+
+function vexClearAnchors() {
+    vexAnchors = [];
+    vexSave();
+    vexUpdateStatus();
+}
+
+function vexStartCalibration() {
+    vexCaptureMode = "calib";
+    vexCalibP1 = null;
+    vexCalibP2 = null;
+
+    // noinspection JSUnresolvedFunction, JSUnresolvedVariable
+    alt1.setTooltip("Vex Calibrate: hover tile #1 then press Alt+1");
+    vexUpdateStatus("Calibration: waiting for point 1 (Alt+1)");
+}
+
+function vexHandleCalibrationPress() {
+    if (!vexCalibP1) {
+        vexCalibP1 = a1lib.mousePosition();
+        // noinspection JSUnresolvedFunction, JSUnresolvedVariable
+        alt1.setTooltip("Vex Calibrate: hover adjacent tile (1 tile away) then press Alt+1");
+        vexUpdateStatus("Calibration: point 1 set. Waiting for point 2 (Alt+1)");
+        return;
+    }
+
+    if (!vexCalibP2) {
+        vexCalibP2 = a1lib.mousePosition();
+
+        var dx = vexCalibP2.x - vexCalibP1.x;
+        var dy = vexCalibP2.y - vexCalibP1.y;
+        var dist = Math.sqrt(dx*dx + dy*dy);
+
+        // dist corresponds to ~1 tile
+        vexPixelsPerTile = dist * vexScaleMult;
+
+        vexCaptureMode = null;
+
+        // noinspection JSUnresolvedFunction, JSUnresolvedVariable
+        alt1.setTooltip("");
+
+        vexSave();
+        vexUpdateStatus("Calibration complete: " + vexPixelsPerTile.toFixed(2) + " px/tile");
+    }
+}
+
+function vexUpdateStatus(extra) {
+    var el = document.getElementById("vex-status");
+    if (!el) return;
+
+    var s = "";
+    if (!vexPixelsPerTile) {
+        s += "Not calibrated. Click Calibrate.\n";
+    } else {
+        s += "px/tile: " + vexPixelsPerTile.toFixed(2) + "\n";
+    }
+
+    s += "anchors: " + vexAnchors.length + "\n";
+    s += "tiles: " + vexGetTiles() + "\n";
+
+    if (extra) s += extra;
+
+    el.innerText = s;
+}
+
+function vexSave() {
+    try {
+        localStorage.setItem("vexAnchors", JSON.stringify(vexAnchors));
+        localStorage.setItem("vexPixelsPerTile", vexPixelsPerTile ? String(vexPixelsPerTile) : "");
+    } catch (e) {}
+}
+
+function vexLoad() {
+    try {
+        var a = localStorage.getItem("vexAnchors");
+        vexAnchors = a ? JSON.parse(a) : [];
+
+        var ppt = localStorage.getItem("vexPixelsPerTile");
+        vexPixelsPerTile = ppt ? parseFloat(ppt) : null;
+        if (isNaN(vexPixelsPerTile)) vexPixelsPerTile = null;
+    } catch (e) {
+        vexAnchors = [];
+        vexPixelsPerTile = null;
+    }
+}
+
+function drawVexOverlays() {
+    if (!vexAnchors || vexAnchors.length === 0) return;
+
+    // fallback if not calibrated
+    var ppt = vexPixelsPerTile ? vexPixelsPerTile : 32;
+
+    var tiles = vexGetTiles();
+    var r = tiles * ppt;
+
+    // Draw for each anchor
+    for (var i = 0; i < vexAnchors.length; i++) {
+        var ax = vexAnchors[i].x;
+        var ay = vexAnchors[i].y;
+
+        // Forbidden zone "thick faint ring"
+        setOverlayG("Vex");
+        drawCircleApprox(ax, ay, r, 64, colorMix(255, 0, 0, 60), 10);
+
+        // Boundary ring (clear edge)
+        setOverlayG("Vex");
+        drawCircleApprox(ax, ay, r, 96, colorMix(255, 0, 0, 200), 2);
+    }
+}
+
+// Approx circle using many short overlay lines
+function drawCircleApprox(cx, cy, radius, segments, color, lineWidth) {
+    var prev = null;
+    for (var i = 0; i <= segments; i++) {
+        var t = (i / segments) * Math.PI * 2;
+        var x = cx + Math.cos(t) * radius;
+        var y = cy + Math.sin(t) * radius;
+
+        if (prev) {
+            alt1.overLayLine(color, lineWidth, Math.round(prev.x), Math.round(prev.y), Math.round(x), Math.round(y), delay);
+        }
+        prev = {x:x, y:y};
+    }
 }
