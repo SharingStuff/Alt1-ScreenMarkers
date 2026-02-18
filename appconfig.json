@@ -1,15 +1,27 @@
 {
   "appName": "Screen Markers",
+  "name": "Screen Markers",
+
   "appId": "screenmarkers.github",
+  "id": "screenmarkers.github",
+
   "description": "Draws click through overlays on screen for all your screen marking needs!",
+
   "appUrl": "https://sharingstuff.github.io/Alt1-ScreenMarkers/index.html",
+  "url": "https://sharingstuff.github.io/Alt1-ScreenMarkers/index.html",
+
   "configUrl": "https://sharingstuff.github.io/Alt1-ScreenMarkers/appconfig.json",
+  "configURL": "https://sharingstuff.github.io/Alt1-ScreenMarkers/appconfig.json",
+
   "iconUrl": "https://sharingstuff.github.io/Alt1-ScreenMarkers/icon.png",
+  "icon": "https://sharingstuff.github.io/Alt1-ScreenMarkers/icon.png",
+
   "defaultWidth": 270,
   "defaultHeight": 400,
   "minWidth": 270,
   "minHeight": 200,
   "maxWidth": 1000,
   "maxHeight": 1000,
+
   "permissions": "overlay,gamestate"
 }
